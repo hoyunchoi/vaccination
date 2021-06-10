@@ -22,6 +22,8 @@
     I -> D with rate I_R * death_rate
 */
 
+namespace SIRD_V {
+
 struct Individual : public Node_Epidemic<unsigned> {
     //* Member variables
     double deathProb{0.0};
@@ -29,11 +31,15 @@ struct Individual : public Node_Epidemic<unsigned> {
     //* Generator
     Individual() {}
     Individual(const unsigned& t_index, const double& t_deathProb) : Node_Epidemic(t_index), deathProb(t_deathProb) {}
-    Individual(const unsigned& t_index, const double& t_deathProb, const std::string& t_state) : Node_Epidemic(t_index, t_state), deathProb(t_deathProb) {}
+    Individual(const unsigned& t_index,    //* Index of individual
+               const double& t_deathProb,  //* Death probability of individual. Choosen randomly at the start, stays constant as dynamics evolves.
+               const std::string& t_state) //* Current state of the individual
+        : Node_Epidemic(t_index, t_state),
+          deathProb(t_deathProb) {}
 };
 
-struct SIRD_V {
-   protected:
+struct Generator {
+  protected:
     //* Member variables
     //* Network parameters
     unsigned m_networkSize;
@@ -56,25 +62,41 @@ struct SIRD_V {
     std::uniform_real_distribution<double> m_probabilityDistribution;
     std::uniform_int_distribution<unsigned> m_nodeDistribution;
 
-   public:
+  public:
     //* Store dynamics
     std::vector<std::vector<unsigned>> dynamics;
 
     //* Public methods
-   public:
-    SIRD_V() {}
-    SIRD_V(const Network<unsigned>&, const std::map<std::string, double>&, const std::set<unsigned>&, const pcg32&);
+  public:
+    Generator() {}
+    Generator(const Network<unsigned>&,
+              const std::map<std::string, double>&,
+              const std::set<unsigned>&,
+              const pcg32&);
 
-    bool syncRun(const double&, const double&);
+    const unsigned syncRun(const double&,
+                           const double&);
 
     //* Protected method
-   protected:
+  protected:
     void updateTransitionRate(const unsigned&);
     void updateTransitionRate();
     void syncUpdate(const double&);
 };
 
-SIRD_V::SIRD_V(const Network<unsigned>& t_network, const std::map<std::string, double>& t_rates, const std::set<unsigned>& t_vaccinatedIndex, const pcg32& t_randomEngine) : m_randomEngine(t_randomEngine), m_vaccinatedIndex(t_vaccinatedIndex) {
+Generator::Generator(const Network<unsigned>& t_network,
+                     const std::map<std::string, double>& t_rates,
+                     const std::set<unsigned>& t_vaccinatedIndex,
+                     const pcg32& t_randomEngine)
+    : m_randomEngine(t_randomEngine),
+      m_vaccinatedIndex(t_vaccinatedIndex) {
+    /*
+        t_network: Network disease will be spread
+        t_rates : Rate parameters
+        t_vaccinatedIndex : Index of nodes who will be vaccinated at the start of dynamcis
+        t_randomEngine: Random engine used for spreading dynamics
+    */
+
     //* Set network
     m_networkSize = t_network.size;
     m_meanDegree = t_network.meanDegree;
@@ -82,7 +104,7 @@ SIRD_V::SIRD_V(const Network<unsigned>& t_network, const std::map<std::string, d
     m_nodeDistribution.param(std::uniform_int_distribution<unsigned>::param_type(0, m_networkSize - 1));
     m_probabilityDistribution.param(std::uniform_real_distribution<double>::param_type(0.0, 1.0));
 
-    //* Generate individuals with their death prob
+    //* Generate individuals with their own death prob
     m_nodes.reserve(m_networkSize);
     for (unsigned index = 0; index < m_networkSize; ++index) {
         const double deathProb = std::pow(m_probabilityDistribution(m_randomEngine), 3);
@@ -104,7 +126,7 @@ SIRD_V::SIRD_V(const Network<unsigned>& t_network, const std::map<std::string, d
     m_numD = 0;
 
     //* Vaccination
-    for (const unsigned& index : m_vaccinatedIndex){
+    for (const unsigned& index : m_vaccinatedIndex) {
         m_nodes[index].state = "V";
     }
 
@@ -121,56 +143,62 @@ SIRD_V::SIRD_V(const Network<unsigned>& t_network, const std::map<std::string, d
     updateTransitionRate();
 }
 
-bool SIRD_V::syncRun(const double& t_deltaT, const double& t_maxTime) {
+//* Run t_maxTime with t_deltaT. Return num death
+const unsigned Generator::syncRun(const double& t_deltaT,
+                                  const double& t_maxTime) {
+    /*
+        t_deltaT: delta T of discrete time gillespie algorithm
+        t_maxTime:  Maximum time where iteration will continue. It can early stop when disease is vanished
+    */
     while (m_time <= t_maxTime) {
         syncUpdate(t_deltaT);
         dynamics.emplace_back(std::vector<unsigned>{m_numS, m_numI, m_numR, m_numD, m_numV});
         if (m_reactingIndex.empty()) {
-            return false;
+            break;
         }
     }
-    return true;
+    return m_numD;
 }
 
-void SIRD_V::updateTransitionRate(const unsigned& t_index) {
+void Generator::updateTransitionRate(const unsigned& t_index) {
     const int int_state = m_state2int.at(m_nodes[t_index].state);
     switch (int_state) {
-        //* S process
-        case 0: {
-            unsigned infectiousNeighbor = 0;
-            for (const unsigned& neighbor : m_nodes[t_index].neighbors) {
-                if (m_nodes[neighbor].state == "I") {
-                    ++infectiousNeighbor;
-                }
+    //* S process
+    case 0: {
+        unsigned infectiousNeighbor = 0;
+        for (const unsigned& neighbor : m_nodes[t_index].neighbors) {
+            if (m_nodes[neighbor].state == "I") {
+                ++infectiousNeighbor;
             }
-            m_nodes[t_index].transitionRate = m_SI_II * infectiousNeighbor;
-            break;
         }
-        //* I process
-        case 1: {
-            m_nodes[t_index].transitionRate = m_I_R;
-            break;
-        }
-        //* R, D process
-        case 2:
-        case 3: {
-            m_nodes[t_index].transitionRate = 0.0;
-            break;
-        }
-        //* V process
-        default: {
-            break;
-        }
+        m_nodes[t_index].transitionRate = m_SI_II * infectiousNeighbor;
+        break;
+    }
+    //* I process
+    case 1: {
+        m_nodes[t_index].transitionRate = m_I_R;
+        break;
+    }
+    //* R, D process
+    case 2:
+    case 3: {
+        m_nodes[t_index].transitionRate = 0.0;
+        break;
+    }
+    //* V process
+    default: {
+        break;
+    }
     }
 }
 
-void SIRD_V::updateTransitionRate() {
+void Generator::updateTransitionRate() {
     for (const unsigned& index : m_reactingIndex) {
         updateTransitionRate(index);
     }
 }
 
-void SIRD_V::syncUpdate(const double& t_deltaT) {
+void Generator::syncUpdate(const double& t_deltaT) {
     //* Do reactions according to each transition rate and add I into reacting nodes
     std::set<unsigned> newReactingIndex;
     for (const unsigned& index : m_reactingIndex) {
@@ -179,42 +207,42 @@ void SIRD_V::syncUpdate(const double& t_deltaT) {
         const double transitionProb = 1.0 - std::exp(-1.0 * transitionRate * t_deltaT);
 
         switch (intState) {
-            //* S process
-            case 0: {
-                //* S -> I
-                if (m_probabilityDistribution(m_randomEngine) <= transitionProb) {
-                    m_nodes[index].state = "I";
-                    --m_numS;
-                    ++m_numI;
-                    newReactingIndex.emplace_hint(newReactingIndex.end(), index);
-                }
-                break;
+        //* S process
+        case 0: {
+            //* S -> I
+            if (m_probabilityDistribution(m_randomEngine) <= transitionProb) {
+                m_nodes[index].state = "I";
+                --m_numS;
+                ++m_numI;
+                newReactingIndex.emplace_hint(newReactingIndex.end(), index);
             }
+            break;
+        }
 
-            //* I process
-            case 1: {
-                if (m_probabilityDistribution(m_randomEngine) <= transitionProb) {
-                    --m_numI;
-                    //* I -> D
-                    if (m_probabilityDistribution(m_randomEngine) <= m_nodes[index].deathProb) {
-                        m_nodes[index].state = "D";
-                        ++m_numD;
-                    }
-                    //* I -> R
-                    else {
-                        m_nodes[index].state = "R";
-                        ++m_numR;
-                    }
+        //* I process
+        case 1: {
+            if (m_probabilityDistribution(m_randomEngine) <= transitionProb) {
+                --m_numI;
+                //* I -> D
+                if (m_probabilityDistribution(m_randomEngine) <= m_nodes[index].deathProb) {
+                    m_nodes[index].state = "D";
+                    ++m_numD;
                 }
-                //* I -> I
+                //* I -> R
                 else {
-                    newReactingIndex.emplace_hint(newReactingIndex.end(), index);
+                    m_nodes[index].state = "R";
+                    ++m_numR;
                 }
-                break;
             }
-            default: {
-                break;
+            //* I -> I
+            else {
+                newReactingIndex.emplace_hint(newReactingIndex.end(), index);
             }
+            break;
+        }
+        default: {
+            break;
+        }
         }
     }
 
@@ -232,3 +260,5 @@ void SIRD_V::syncUpdate(const double& t_deltaT) {
     m_time += t_deltaT;
     updateTransitionRate();
 }
+
+} // namespace SIRD_V
