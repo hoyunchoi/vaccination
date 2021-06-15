@@ -11,7 +11,7 @@
 #include "pcg_random.hpp"
 
 //* Import from current project
-#include "SIRD_V.hpp"
+#include "Generator.hpp"
 #include "fileName.hpp"
 
 int main(int argc, char* argv[]) {

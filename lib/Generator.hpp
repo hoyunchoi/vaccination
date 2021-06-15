@@ -1,13 +1,13 @@
 #pragma once
 
-#include <math.h>
-
+#include <cmath>
 #include <map>
 #include <random>
 #include <set>
 #include <string>
 #include <vector>
 
+//* Import from library
 #include "CSV.hpp"
 #include "Epidemics.hpp"
 #include "Networks.hpp"
@@ -26,21 +26,37 @@ namespace SIRD_V {
 
 struct Individual : public Node_Epidemic<unsigned> {
     //* Member variables
+    unsigned age;
     double deathProb{0.0};
 
     //* Generator
     Individual() {}
     Individual(const unsigned& t_index, const double& t_deathProb) : Node_Epidemic(t_index), deathProb(t_deathProb) {}
-    Individual(const unsigned& t_index,    //* Index of individual
-               const double& t_deathProb,  //* Death probability of individual. Choosen randomly at the start, stays constant as dynamics evolves.
-               const std::string& t_state) //* Current state of the individual
+    Individual(const unsigned& t_index,
+               const unsigned& t_age,
+               const double& t_deathProb,
+               const std::string& t_state = "S")
         : Node_Epidemic(t_index, t_state),
-          deathProb(t_deathProb) {}
+          age(t_age),
+          deathProb(t_deathProb){
+        /*
+            t_index: Index of individual
+            t_age: Age of individual
+            t_deathProb: Death probability of individual. Choosen randomly at the start, stays constant as dynamics evolves.
+            t_state: Current state of the individual
+        */
+    }
 };
 
 struct Generator {
-  protected:
     //* Member variables
+  protected:
+
+    //* Random variables
+    pcg32 m_randomEngine;
+    std::uniform_real_distribution<double> m_probabilityDistribution;
+    std::uniform_int_distribution<unsigned> m_nodeDistribution;
+
     //* Network parameters
     unsigned m_networkSize;
     double m_meanDegree;
@@ -55,12 +71,11 @@ struct Generator {
     //* Informations
     double m_time;
     unsigned m_numS, m_numI, m_numR, m_numD, m_numV;
-    const std::map<std::string, int> m_state2int = {{"S", 0}, {"I", 1}, {"R", 2}, {"D", 3}, {"V", 3}};
-
-    //* Random variables
-    pcg32 m_randomEngine;
-    std::uniform_real_distribution<double> m_probabilityDistribution;
-    std::uniform_int_distribution<unsigned> m_nodeDistribution;
+    const std::map<std::string, int> m_state2int = {{"S", 0},
+                                                    {"I", 1},
+                                                    {"R", 2},
+                                                    {"D", 3},
+                                                    {"V", 4}};
 
   public:
     //* Store dynamics
@@ -108,7 +123,8 @@ Generator::Generator(const Network<unsigned>& t_network,
     m_nodes.reserve(m_networkSize);
     for (unsigned index = 0; index < m_networkSize; ++index) {
         const double deathProb = std::pow(m_probabilityDistribution(m_randomEngine), 3);
-        Individual node(index, deathProb, "S");
+        const unsigned age = 0;
+        Individual node(index, age, deathProb);
         node.neighbors = t_network.adjacency[index];
         m_nodes.emplace_back(node);
     }

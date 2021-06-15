@@ -13,7 +13,7 @@ const std::string getNetworkPrefix(const std::string& t_type,
     return t_networkSeed == -1 ? prefix : prefix + "-" + std::to_string(t_networkSeed);
 }
 
-const std::string getDynamicsPrefix() {
-}
+// const std::string getDynamicsPrefix() {
+// }
 
 } // namespace SIRD_V

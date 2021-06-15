@@ -15,7 +15,7 @@
 #include "pcg_random.hpp"
 
 //* Import from current project
-#include "SIRD_V.hpp"
+#include "Generator.hpp"
 
 namespace SIRD_V {
 struct SA {
@@ -45,7 +45,12 @@ struct SA {
     //* Member methods
   public:
     SA() {}
-    SA(const Network<unsigned>&, const std::map<std::string, double>&, const unsigned&, const int&, const double&);
+    SA(const Network<unsigned>&,
+       const std::map<std::string, double>&,
+       const unsigned&,
+       const int&,
+       const double&,
+       const double&);
 
     void run(const unsigned&);
 
@@ -57,16 +62,20 @@ SA::SA(const Network<unsigned>& t_network,
        const std::map<std::string, double>& t_rates,
        const unsigned& t_vaccineNum,
        const int& t_seed,
+       const double& t_initialTemperature,
        const double& t_initialEnergy = std::numeric_limits<double>::max())
     : m_network(t_network),
       m_rates(t_rates),
       m_vaccineNum(t_vaccineNum),
-      m_SA_seed(t_seed) {
+      m_SA_seed(t_seed),
+      m_temperature(t_initialTemperature),
+      m_energy(t_initialEnergy) {
     /*
         t_network: Network type. Where every disease will be spread
         t_rates: Rates for SIRD_V model
         t_vaccineNum: Number of total vaccine
         t_SA_seed: seed for random engine used in SA algorithm
+        t_initialTemperature: Initial temperature for SA algorithm
         t_initialEnergy: Initial energy. If not given, defualt is inf
     */
     //* Generate random engine for SA
@@ -97,7 +106,7 @@ void SA::run(const unsigned& t_ensembleSize) {
 
         //* Change resulting energy or not
         const double deltaE = (double)totalDeath - m_energy;
-        if (m_probDistribution(m_SA_randomEngine) < std::exp(-1.0 * deltaE / m_temperature)){
+        if (m_probDistribution(m_SA_randomEngine) < std::exp(-1.0 * deltaE / m_temperature)) {
             m_energy = (double)totalDeath;
             m_vaccinatedIndex = newVaccinatedIndex;
         }
